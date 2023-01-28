@@ -16,7 +16,7 @@ class TokenNotFoundException(OnlyForLog):
     pass
 
 
-class TelegramError(OnlyForLog):
+class TelegramMessageError(OnlyForLog):
     """Ошибка отправки сообщения в telegram."""
 
     pass
@@ -30,5 +30,11 @@ class EmptyAnswer(Exception):
 
 class EndPointIsNotAvailiable(Exception):
     """Проблема с endopoint. response != 200."""
+
+    pass
+
+
+class JSONError(Exception):
+    """Ошибка при декодировании сообщения JSON."""
 
     pass

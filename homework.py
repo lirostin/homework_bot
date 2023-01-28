@@ -1,6 +1,8 @@
 import logging
 import os
 import time
+from http import HTTPStatus
+from json.decoder import JSONDecodeError
 from logging.handlers import RotatingFileHandler
 
 import requests
@@ -48,12 +50,11 @@ def send_message(bot: telegram.bot.Bot, message: str) -> None:
     """Отпарвляет пользователю сообщение в телеграмм."""
     try:
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
+        logger.debug(f'Сообщение отправлено: "{message}".')
     except telegram.error.TelegramError as error:
-        message = f"Ошибка отправки сообщения, статуса в telegram: {error}"
-        logger.error(message, exc_info=True)
-        raise exceptions.TelegramError(message)
-    else:
-        logger.debug(f'Сообщение отправлено: "{message[:15]}..."')
+        raise exceptions.TelegramMessageError(
+            f"Ошибка отправки сообщения, статуса в telegram: {error}"
+        )
 
 
 def get_api_answer(timestamp: int) -> dict:
@@ -62,27 +63,31 @@ def get_api_answer(timestamp: int) -> dict:
         response = requests.get(
             url=ENDPOINT, headers=HEADERS, params={"from_date": timestamp}
         )
-        if response.status_code != 200:
-            raise exceptions.EndPointIsNotAvailiable(response.status_code)
+        about_response = (
+            f"Запрос: {ENDPOINT}, {HEADERS}, {timestamp}: "
+            f"вернулся со статусом: {response.status_code}. "
+            f"Код ответа: {response.status_code}. "
+            f"Причина: {response.reason}. "
+            f"Текст: {response.text}."
+        )
+        if response.status_code != HTTPStatus.OK:
+            raise exceptions.EndPointIsNotAvailiable(about_response)
+        logger.debug(about_response)
+        return response.json()
     except requests.exceptions.RequestException as error:
         raise exceptions.RequestAPIError(
             f"Ошибка при запросе к основному API: {error}"
         )
-    return response.json()
-
-
-def get_time_interval(days: int) -> int:
-    """За какой период проверить сообщения."""
-    if days == 0:
-        return 0
-    sec = days * 24 * 60 * 60
-    return int(time.time()) - sec
+    except JSONDecodeError as error:
+        raise exceptions.JSONError(f"Ошибка при декодировании JSON: {error}")
 
 
 def check_response(response: dict) -> dict:
     """Проверка ответа API на соответствие документации."""
     if not isinstance(response, dict):
-        raise TypeError("Ответ API не является dict")
+        raise TypeError(f"Ответ API не является dict. {response}")
+    if "homeworks" not in response or "current_date" not in response:
+        raise exceptions.EmptyAnswer("Пришёл пустой ответ.")
     homework_list = response.get("homeworks")
     if not isinstance(homework_list, list):
         raise TypeError("homeworks не является list")
@@ -94,6 +99,8 @@ def check_response(response: dict) -> dict:
 
 def parse_status(homework: dict) -> str:
     """Извлекает из информации о конкретной домашней работе и её статус."""
+    if "homework_name" not in homework:
+        raise KeyError("Нет ключа homework_name в ответе API")
     homework_name = homework.get("homework_name")
     homework_status = homework.get("status")
     if homework_name is None:
@@ -118,12 +125,12 @@ def main():
     while True:
         try:
             response = get_api_answer(timestamp)
+            timestamp = response.get("current_date", int(time.time()))
             homework_dict = check_response(response)
             message = parse_status(homework_dict)
             if message != previous_message:
                 send_message(bot, message)
                 previous_message = message
-                timestamp = int(time.time())
             else:
                 logger.debug("Cтатус домашней работы не изменился.")
 
