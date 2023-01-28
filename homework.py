@@ -52,6 +52,7 @@ def send_message(bot: telegram.bot.Bot, message: str) -> None:
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
         logger.debug(f'Сообщение отправлено: "{message}".')
     except telegram.error.TelegramError as error:
+        logger.error(message) 
         raise exceptions.TelegramMessageError(
             f"Ошибка отправки сообщения, статуса в telegram: {error}"
         )
@@ -129,7 +130,7 @@ def main():
             homework_dict = check_response(response)
             message = parse_status(homework_dict)
             if message != previous_message:
-                send_message(bot, message)
+                send_message(bot, message)  
                 previous_message = message
             else:
                 logger.debug("Cтатус домашней работы не изменился.")
