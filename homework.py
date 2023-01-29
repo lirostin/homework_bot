@@ -65,15 +65,14 @@ def get_api_answer(timestamp: int) -> dict:
             url=ENDPOINT, headers=HEADERS, params={"from_date": timestamp}
         )
         about_response = (
-            f"Запрос: {ENDPOINT}, {HEADERS}, {timestamp}: "
             f"вернулся со статусом: {response.status_code}. "
-            f"Код ответа: {response.status_code}. "
+            f" Текст: {response.text}."
             f"Причина: {response.reason}. "
-            f"Текст: {response.text}."
+            f"Запрос: {ENDPOINT}, {HEADERS}, {timestamp}: "
         )
         if response.status_code != HTTPStatus.OK:
             raise exceptions.EndPointIsNotAvailiable(about_response)
-        logger.debug(about_response)
+        logger.debug({about_response})
         return response.json()
     except requests.exceptions.RequestException as error:
         raise exceptions.RequestAPIError(
@@ -87,8 +86,12 @@ def check_response(response: dict) -> dict:
     """Проверка ответа API на соответствие документации."""
     if not isinstance(response, dict):
         raise TypeError(f"Ответ API не является dict. {response}")
-    if "homeworks" not in response or "current_date" not in response:
-        raise exceptions.EmptyAnswer("Пришёл пустой ответ.")
+    if "homeworks" not in response:
+        raise exceptions.NoKey("В ответе нет необходимого ключа 'homeworks'.")
+    if "current_date" not in response:
+        raise exceptions.NoKey(
+            "В ответе нет необходимого ключа 'current_date'."
+        )
     homework_list = response.get("homeworks")
     if not isinstance(homework_list, list):
         raise TypeError("homeworks не является list")
@@ -100,12 +103,12 @@ def check_response(response: dict) -> dict:
 
 def parse_status(homework: dict) -> str:
     """Извлекает из информации о конкретной домашней работе и её статус."""
+    if not isinstance(homework, dict):
+        raise TypeError(f"Вложенный объект не является словарём. {homework}")
     if "homework_name" not in homework:
         raise KeyError("Нет ключа homework_name в ответе API")
     homework_name = homework.get("homework_name")
     homework_status = homework.get("status")
-    if homework_name is None:
-        raise KeyError("В ответе API отсутствует ключ homework_name")
     if homework_status not in HOMEWORK_VERDICTS:
         raise KeyError(f"Статус {homework_status} не найден")
     verdict = HOMEWORK_VERDICTS[homework_status]
@@ -134,6 +137,9 @@ def main():
                 previous_message = message
             else:
                 logger.debug("Cтатус домашней работы не изменился.")
+
+        except exceptions.EmptyAnswer as error:
+            logger.debug(error)
 
         except exceptions.OnlyForLog as error:
             message = f"Сбой в работе программы: {error}"
